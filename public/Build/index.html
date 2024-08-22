@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Unity Web Player | SeiLandsTeleApp</title>
+    <link rel="shortcut icon" href="TemplateData/favicon.ico">
+    <link rel="stylesheet" href="TemplateData/style.css">
+    <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
+    <style>
+        /* body {
+          margin: 0;
+          padding: 0;
+          overflow: hidden;
+      }
+      #unity-container {
+          position: relative;
+      } */
+        #ton-connect {
+            position: absolute;
+            top: 50px;
+            left: 10px;
+            z-index: 1000;
+            display: none;
+            /* Initially hide the button */
+        }
+
+        #connect-wallet {
+            background-color: #3390ec;
+            color: #ffffff;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="unity-container" class="unity-desktop">
+        <canvas id="unity-canvas" width="600" height="960" tabindex="-1"></canvas>
+        <div id="unity-loading-bar">
+            <div id="unity-logo"></div>
+            <div id="unity-progress-bar-empty">
+                <div id="unity-progress-bar-full"></div>
+            </div>
+        </div>
+        <div id="unity-warning"></div>
+
+    </div>
+    <!-- TON Connect Button -->
+    <div id="ton-connect">
+        <!-- <button id="connect-wallet">Connect TON Wallet</button> -->
+    </div>
+    <script>
+        function unityShowBanner(msg, type) {
+            var warningBanner = document.querySelector("#unity-warning");
+            function updateBannerVisibility() {
+                warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
+            }
+            var div = document.createElement('div');
+            div.innerHTML = msg;
+            warningBanner.appendChild(div);
+            if (type == 'error') div.style = 'background: red; padding: 10px;';
+            else if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
+            setTimeout(function () {
+                warningBanner.removeChild(div);
+                updateBannerVisibility();
+            }, 5000);
+            updateBannerVisibility();
+        }
+
+        function initUnity() {
+            var canvas = document.querySelector("#unity-canvas");
+            var buildUrl = "Build";
+            var loaderUrl = buildUrl + "/Builds.loader.js";
+            var config = {
+                arguments: [],
+                dataUrl: buildUrl + "/Builds.data",
+                frameworkUrl: buildUrl + "/Builds.framework.js",
+                codeUrl: buildUrl + "/Builds.wasm",
+                streamingAssetsUrl: "StreamingAssets",
+                companyName: "DefaultCompany",
+                productName: "SeiLandsTeleApp",
+                productVersion: "1.0",
+                showBanner: unityShowBanner,
+            };
+
+            if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+                var meta = document.createElement('meta');
+                meta.name = 'viewport';
+                meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
+                document.getElementsByTagName('head')[0].appendChild(meta);
+                document.querySelector("#unity-container").className = "unity-mobile";
+                canvas.className = "unity-mobile";
+            } else {
+                canvas.style.width = "100%";
+                canvas.style.height = "100%";
+            }
+
+            document.querySelector("#unity-loading-bar").style.display = "block";
+
+            var script = document.createElement("script");
+            script.src = loaderUrl;
+            script.onload = () => {
+                createUnityInstance(canvas, config, (progress) => {
+                    document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
+                }).then((unityInstance) => {
+                    document.querySelector("#unity-loading-bar").style.display = "none";
+                    document.querySelector("#unity-fullscreen-button").onclick = () => {
+                        unityInstance.SetFullscreen(1);
+                    };
+                    // Store the Unity instance globally
+                    window.unityInstance = unityInstance;
+                    // Extract user data and send to Unity
+                    sendUserDataToUnity();
+                }).catch((message) => {
+                    alert(message);
+                });
+            };
+
+            document.body.appendChild(script);
+        }
+
+        function sendUserDataToUnity() {
+            try {
+                // Extract and decode URL hash
+                const urlHash = decodeURIComponent(window.location.hash.substring(1)); // remove '#'
+                console.log('Decoded URL hash:', urlHash);
+
+                const params = new URLSearchParams(urlHash);
+                const user = JSON.parse(params.get('user'));
+
+                const userId = `${user.id}`;
+                const username = `${user.username}`;
+                const firstname = `${user.first_name}`;
+                const lastname = `${user.last_name}`;
+                const userData = JSON.stringify({ user_id: userId, username, firstname, lastname });
+
+                // Log user information
+                console.log('User ID:', userId);
+                console.log('Username:', username);
+                console.log('FirstName: ', firstname)
+                console.log('LastName: ', lastname)
+
+                // Log user data being sent to Unity
+                console.log('Sending user data to WebGL:', userData);
+
+                // Send user data to WebGL
+                if (window.unityInstance) {
+                    window.unityInstance.SendMessage('WebToUnityController', 'SetUserData', userData);
+                    console.log('User data sent to WebGL.');
+                } else {
+                    console.error('Unity instance not found.');
+                }
+            } catch (error) {
+                unityShowBanner('An error occurred while sending user data.', 'error');
+                console.error('Error sending user data:', error);
+            }
+        }
+
+        // Initialize Unity on page load
+        document.addEventListener('DOMContentLoaded', initUnity);
+
+        // TON Connect UI functionality
+        const tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
+            manifestUrl: 'https://33ef-2407-aa80-314-93eb-c09b-6a84-cebc-2d42.ngrok-free.app/tonconnect-manifest.json',
+            buttonRootId: 'ton-connect'
+        });
+
+        // Show Connect Modal programmatically
+        async function connectToWallet() {
+            try {
+                const connectedWallet = await tonConnectUI.connectWallet();
+                // Do something with connectedWallet if needed
+                console.log(connectedWallet);
+                document.getElementById('connect-wallet').textContent = 'Wallet Connected';
+            } catch (error) {
+                console.error("Error connecting to wallet:", error);
+            }
+        }
+
+        // Handle Connect Wallet Button
+        document.getElementById('connect-wallet').addEventListener('click', () => {
+            connectToWallet().catch(error => console.error(error));
+        });
+
+        // Handle the flag received from Unity
+        document.addEventListener('SendFlagToWebGL', function (event) {
+            var flagStr = event.detail;
+            var flag = flagStr === "true";
+            console.log("Received flag from Unity:", flag);
+            // Show or hide the TON Connect button based on the flag
+            document.getElementById('ton-connect').style.display = flag ? 'block' : 'none';
+        });
+
+        window.dispatchReactUnityEvent = function (eventName, ...args) {
+            const event = new CustomEvent(eventName, { detail: args.length === 1 ? args[0] : args });
+            document.dispatchEvent(event);
+        };
+    </script>
+</body>
+
+</html>
